@@ -78,7 +78,7 @@ frame:SetFrameStrata("HIGH")
 local text = frame:CreateFontString(nil, "OVERLAY")
 text:SetPoint("CENTER", frame, "CENTER", 0, 0)
 text:SetFont("Fonts\\FRIZQT__.TTF", 56, "OUTLINE")
-text:SetTextColor(0.7, 0.85, 1.0)
+text:SetTextColor(0.65, 1.0, 0.35)
 
 local debugText = frame:CreateFontString(nil, "OVERLAY")
 debugText:SetPoint("LEFT", text, "RIGHT", 20, 0)
