@@ -1,13 +1,20 @@
 local SPELL_ID = 1221389
 local SPELL_NAME = (C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(SPELL_ID)) or GetSpellInfo(SPELL_ID)
 local TARGET_UNIT = "target"
-local MAX_DEBUG_AURA_INDEX = 80
 
 local function NormalizeStacks(stacks)
 	if not stacks or stacks < 1 then
 		return 1
 	end
 	return stacks
+end
+
+local function GetAuraStacks(auraData)
+	if not auraData then
+		return 0
+	end
+
+	return NormalizeStacks(auraData.applications or auraData.count)
 end
 
 local function GetDebuffStacks(unit)
@@ -18,38 +25,54 @@ local function GetDebuffStacks(unit)
 	if AuraUtil and AuraUtil.FindAuraBySpellID then
 		local auraData = AuraUtil.FindAuraBySpellID(SPELL_ID, unit, "HARMFUL")
 		if auraData then
-			return NormalizeStacks(auraData.applications or auraData.count)
+			return GetAuraStacks(auraData)
+		end
+	end
+
+	if AuraUtil and AuraUtil.FindAuraByName and SPELL_NAME then
+		local auraData = AuraUtil.FindAuraByName(SPELL_NAME, unit, "HARMFUL")
+		if auraData then
+			return GetAuraStacks(auraData)
 		end
 	end
 
 	if C_UnitAuras and C_UnitAuras.GetAuraDataBySpellName and SPELL_NAME then
 		local auraData = C_UnitAuras.GetAuraDataBySpellName(unit, SPELL_NAME, "HARMFUL")
 		if auraData then
-			return NormalizeStacks(auraData.applications or auraData.count)
+			return GetAuraStacks(auraData)
 		end
 	end
 
 	return 0
 end
 
-local function CollectAuraSpellIds(unit, filter)
-	if not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then
-		return {}
+local function IsUnprotectedComparable(value)
+	return pcall(function()
+		return value == value
+	end)
+end
+
+local function SafeSpellIdText(spellId)
+	if spellId == nil then
+		return "-"
 	end
 
-	local spellIds = {}
-	for index = 1, MAX_DEBUG_AURA_INDEX do
-		local auraData = C_UnitAuras.GetAuraDataByIndex(unit, index, filter)
-		if not auraData then
-			break
-		end
-
-		if auraData.spellId then
-			spellIds[#spellIds + 1] = tostring(auraData.spellId)
-		end
+	if not IsUnprotectedComparable(spellId) then
+		return "<secret>"
 	end
 
-	return spellIds
+	return tostring(spellId)
+end
+
+local function ForEachUnitAura(unit, filter, callback)
+	if not AuraUtil or not AuraUtil.ForEachAura then
+		return false
+	end
+
+	AuraUtil.ForEachAura(unit, filter, nil, function(auraData)
+		return callback(auraData)
+	end)
+	return true
 end
 
 local function GetDebugAuraSpellIdsText(unit)
@@ -57,11 +80,15 @@ local function GetDebugAuraSpellIdsText(unit)
 		return ""
 	end
 
-	local spellIds = CollectAuraSpellIds(unit, "HELPFUL")
-	local harmfulSpellIds = CollectAuraSpellIds(unit, "HARMFUL")
-	for index = 1, #harmfulSpellIds do
-		spellIds[#spellIds + 1] = harmfulSpellIds[index]
+	local spellIds = {}
+	local function appendSpellIds(filter)
+		ForEachUnitAura(unit, filter, function(auraData)
+			spellIds[#spellIds + 1] = SafeSpellIdText(auraData and auraData.spellId)
+		end)
 	end
+
+	appendSpellIds("HELPFUL")
+	appendSpellIds("HARMFUL")
 
 	if #spellIds == 0 then
 		return "spellId: -"
@@ -94,6 +121,7 @@ local function Refresh()
 		frame:Show()
 		return
 	end
+
 	local stacks = GetDebuffStacks(TARGET_UNIT)
 	text:SetText(tostring(stacks))
 	debugText:SetText(GetDebugAuraSpellIdsText(TARGET_UNIT))
