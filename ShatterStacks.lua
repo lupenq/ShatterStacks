@@ -3,6 +3,11 @@ local PRIMARY_SPELL_NAME = (C_Spell and C_Spell.GetSpellName and C_Spell.GetSpel
 local SECONDARY_SPELL_ID = 1246769
 local SECONDARY_SPELL_NAME = (C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(SECONDARY_SPELL_ID)) or GetSpellInfo(SECONDARY_SPELL_ID)
 local TARGET_UNIT = "target"
+local TRACKED_SPELL_IDS = {
+	[PRIMARY_SPELL_ID] = true,
+	[SECONDARY_SPELL_ID] = true,
+}
+local trackedAuraStacksByGuid = {}
 
 local function NormalizeStacks(stacks)
 	if not stacks or stacks < 1 then
@@ -19,9 +24,53 @@ local function GetAuraStacks(auraData)
 	return NormalizeStacks(auraData.applications or auraData.count)
 end
 
+local function SetTrackedAuraStacks(guid, spellId, stacks)
+	if not guid or not TRACKED_SPELL_IDS[spellId] then
+		return
+	end
+
+	local guidStacks = trackedAuraStacksByGuid[guid]
+	if stacks and stacks > 0 then
+		if not guidStacks then
+			guidStacks = {}
+			trackedAuraStacksByGuid[guid] = guidStacks
+		end
+		guidStacks[spellId] = NormalizeStacks(stacks)
+		return
+	end
+
+	if not guidStacks then
+		return
+	end
+
+	guidStacks[spellId] = nil
+	if not next(guidStacks) then
+		trackedAuraStacksByGuid[guid] = nil
+	end
+end
+
+local function GetCachedDebuffStacks(unit, spellId)
+	local guid = UnitGUID(unit)
+	if not guid then
+		return nil
+	end
+
+	local guidStacks = trackedAuraStacksByGuid[guid]
+	if not guidStacks then
+		return nil
+	end
+
+	return guidStacks[spellId]
+end
+
 local function GetDebuffStacks(unit, spellId, spellName)
 	if not unit or not UnitExists(unit) then
 		return 0
+	end
+
+	local cachedStacks = GetCachedDebuffStacks(unit, spellId)
+	if cachedStacks then
+		return cachedStacks
 	end
 
 	if AuraUtil and AuraUtil.FindAuraBySpellID then
@@ -83,25 +132,17 @@ local function GetDebugAuraSpellIdsText(unit)
 	end
 
 	local spellIds = {}
-	local debugUnavailable = false
 	local function appendSpellIds(filter)
-		local ok = ForEachUnitAura(unit, filter, function(auraData)
+		ForEachUnitAura(unit, filter, function(auraData)
 			spellIds[#spellIds + 1] = SafeSpellIdText(auraData and auraData.spellId)
 		end)
-		if not ok then
-			debugUnavailable = true
-		end
 	end
 
 	appendSpellIds("HELPFUL")
 	appendSpellIds("HARMFUL")
 
-	if debugUnavailable and #spellIds == 0 then
-		return "spellId: <debug unavailable>"
-	end
-
 	if #spellIds == 0 then
-		return "spellId: -"
+		return ""
 	end
 
 	return "spellId: " .. table.concat(spellIds, ", ")
@@ -147,11 +188,31 @@ local function Refresh()
 end
 
 frame:RegisterEvent("PLAYER_TARGET_CHANGED")
+frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 frame:RegisterUnitEvent("UNIT_AURA", TARGET_UNIT)
 frame:SetScript("OnEvent", function(_, event)
-	if event == "PLAYER_TARGET_CHANGED" or event == "UNIT_AURA" then
+	if event == "COMBAT_LOG_EVENT_UNFILTERED" then
+		local _, subevent, _, _, _, _, _, destGUID, _, _, _, spellId, _, _, auraType, amount = CombatLogGetCurrentEventInfo()
+		if auraType ~= "DEBUFF" or not TRACKED_SPELL_IDS[spellId] then
+			return
+		end
+
+		if subevent == "SPELL_AURA_APPLIED" or subevent == "SPELL_AURA_REFRESH" then
+			SetTrackedAuraStacks(destGUID, spellId, 1)
+		elseif subevent == "SPELL_AURA_APPLIED_DOSE" then
+			SetTrackedAuraStacks(destGUID, spellId, amount)
+		elseif subevent == "SPELL_AURA_REMOVED" or subevent == "SPELL_AURA_BROKEN" or subevent == "SPELL_AURA_BROKEN_SPELL" then
+			SetTrackedAuraStacks(destGUID, spellId, nil)
+		elseif subevent == "SPELL_AURA_REMOVED_DOSE" then
+			SetTrackedAuraStacks(destGUID, spellId, amount)
+		end
+	elseif event == "PLAYER_TARGET_CHANGED" or event == "UNIT_AURA" or event == "PLAYER_ENTERING_WORLD" then
 		Refresh()
+		return
 	end
+
+	Refresh()
 end)
 
 Refresh()
