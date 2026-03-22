@@ -1,0 +1,7 @@
+## Interface: 120001
+## Title: ShatterStacks
+## Notes: Shows stack count of debuff spell 1221389 on your current target (center screen).
+## Version: 1.0.0
+## Author: RaD1CaL
+
+ShatterStacks.lua
