@@ -1,24 +1,44 @@
 local SPELL_ID = 1221389
+local SPELL_NAME = (C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(SPELL_ID)) or GetSpellInfo(SPELL_ID)
 local TARGET_UNIT = "target"
 local MAX_AURA_INDEX = 80
 
-local function GetDebuffStacks(unit, spellId)
+local function NormalizeStacks(stacks)
+	if not stacks or stacks < 1 then
+		return 1
+	end
+	return stacks
+end
+
+local function GetDebuffStacks(unit)
 	if not unit or not UnitExists(unit) then
 		return 0
 	end
-	for index = 1, MAX_AURA_INDEX do
-		local auraData = C_UnitAuras.GetAuraDataByIndex(unit, index, "HARMFUL")
-		if not auraData then
-			break
-		end
-		if auraData.spellId == spellId then
-			local stacks = auraData.applications or 0
-			if stacks < 1 then
-				return 1
-			end
-			return stacks
+
+	if AuraUtil and AuraUtil.FindAuraBySpellID then
+		local auraData = AuraUtil.FindAuraBySpellID(SPELL_ID, unit, "HARMFUL")
+		if auraData then
+			return NormalizeStacks(auraData.applications or auraData.count)
 		end
 	end
+
+	if SPELL_NAME and AuraUtil and AuraUtil.FindAuraByName then
+		local auraName, _, count = AuraUtil.FindAuraByName(SPELL_NAME, unit, "HARMFUL")
+		if auraName then
+			return NormalizeStacks(count)
+		end
+	end
+
+	for index = 1, MAX_AURA_INDEX do
+		local auraName, _, count, _, _, _, _, _, _, spellId = UnitDebuff(unit, index)
+		if not auraName then
+			break
+		end
+		if spellId == SPELL_ID or (SPELL_NAME and auraName == SPELL_NAME) then
+			return NormalizeStacks(count)
+		end
+	end
+
 	return 0
 end
 
@@ -38,7 +58,7 @@ local function Refresh()
 		frame:Show()
 		return
 	end
-	local stacks = GetDebuffStacks(TARGET_UNIT, SPELL_ID)
+	local stacks = GetDebuffStacks(TARGET_UNIT)
 	text:SetText(tostring(stacks))
 	frame:Show()
 end
