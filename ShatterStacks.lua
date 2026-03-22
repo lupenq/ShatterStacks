@@ -71,10 +71,10 @@ local function ForEachUnitAura(unit, filter, callback)
 		return false
 	end
 
-	AuraUtil.ForEachAura(unit, filter, nil, function(auraData)
+	local ok = pcall(AuraUtil.ForEachAura, unit, filter, nil, function(auraData)
 		return callback(auraData)
 	end)
-	return true
+	return ok
 end
 
 local function GetDebugAuraSpellIdsText(unit)
@@ -83,14 +83,22 @@ local function GetDebugAuraSpellIdsText(unit)
 	end
 
 	local spellIds = {}
+	local debugUnavailable = false
 	local function appendSpellIds(filter)
-		ForEachUnitAura(unit, filter, function(auraData)
+		local ok = ForEachUnitAura(unit, filter, function(auraData)
 			spellIds[#spellIds + 1] = SafeSpellIdText(auraData and auraData.spellId)
 		end)
+		if not ok then
+			debugUnavailable = true
+		end
 	end
 
 	appendSpellIds("HELPFUL")
 	appendSpellIds("HARMFUL")
+
+	if debugUnavailable and #spellIds == 0 then
+		return "spellId: <debug unavailable>"
+	end
 
 	if #spellIds == 0 then
 		return "spellId: -"
