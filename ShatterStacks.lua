@@ -1,7 +1,6 @@
 local SPELL_ID = 1221389
 local SPELL_NAME = (C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(SPELL_ID)) or GetSpellInfo(SPELL_ID)
 local TARGET_UNIT = "target"
-local MAX_AURA_INDEX = 80
 
 local function NormalizeStacks(stacks)
 	if not stacks or stacks < 1 then
@@ -22,22 +21,9 @@ local function GetDebuffStacks(unit)
 		end
 	end
 
-	if not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex or not SPELL_NAME then
-		return 0
-	end
-
-	for index = 1, MAX_AURA_INDEX do
-		local auraData = C_UnitAuras.GetAuraDataByIndex(unit, index, "HARMFUL")
-		if not auraData then
-			break
-		end
-
-		local auraSpellName
-		if auraData.spellId then
-			auraSpellName = (C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(auraData.spellId)) or GetSpellInfo(auraData.spellId)
-		end
-
-		if auraSpellName == SPELL_NAME then
+	if C_UnitAuras and C_UnitAuras.GetAuraDataBySpellName and SPELL_NAME then
+		local auraData = C_UnitAuras.GetAuraDataBySpellName(unit, SPELL_NAME, "HARMFUL")
+		if auraData then
 			return NormalizeStacks(auraData.applications or auraData.count)
 		end
 	end
